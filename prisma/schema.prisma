@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SECURITY_GUARD
+  HOST
+  ADMIN
+  IT_ADMIN
+  AUDIT
+}
+
+enum VisitStatus {
+  INVITED
+  PENDING_APPROVAL
+  APPROVED
+  CHECKED_IN
+  CHECKED_OUT
+  REJECTED
+  CANCELLED
+  DENIED
+}
+
+enum VisitType {
+  PRE_REGISTERED
+  WALK_IN
+}
+
+enum IdDocumentType {
+  AADHAAR
+  PAN
+  PASSPORT
+  DRIVING_LICENSE
+  OTHER
+}
+
+enum GateLocation {
+  MAIN_GATE
+  ACADEMIC_BLOCK
+}
+
+enum AuditAction {
+  VISIT_CREATED
+  VISIT_UPDATED
+  VISIT_CANCELLED
+  VISIT_APPROVED
+  VISIT_REJECTED
+  CHECK_IN
+  CHECK_OUT
+  BLACKLIST_MATCH
+  BLACKLIST_ADDED
+  USER_LOGIN
+  SETTINGS_UPDATED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  department   String?
+  phone        String?
+  role         UserRole @default(HOST)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  hostedVisits     Visit[]     @relation("HostVisits")
+  createdVisits    Visit[]     @relation("CreatedBy")
+  checkInActions   Visit[]     @relation("CheckedInBy")
+  checkOutActions  Visit[]     @relation("CheckedOutBy")
+  auditLogs        AuditLog[]
+  blacklistEntries Blacklist[] @relation("AddedBy")
+}
+
+model Visit {
+  id              String          @id @default(cuid())
+  visitCode       String          @unique
+  visitorName     String
+  visitorPhone    String
+  visitorEmail    String?
+  organization    String?
+  purpose         String
+  visitType       VisitType
+  status          VisitStatus     @default(INVITED)
+  expectedAt      DateTime
+  durationMinutes Int             @default(120)
+  validFrom       DateTime?
+  validUntil      DateTime?
+  gateLocation    GateLocation    @default(MAIN_GATE)
+  escortRequired  Boolean         @default(false)
+
+  hostId          String
+  host            User            @relation("HostVisits", fields: [hostId], references: [id])
+
+  createdById     String?
+  createdBy       User?           @relation("CreatedBy", fields: [createdById], references: [id])
+
+  idDocumentType  IdDocumentType?
+  idDocumentNumber String?
+  idDocumentLast4 String?
+
+  checkedInAt     DateTime?
+  checkedOutAt    DateTime?
+  checkedInById   String?
+  checkedInBy     User?           @relation("CheckedInBy", fields: [checkedInById], references: [id])
+  checkedOutById  String?
+  checkedOutBy    User?           @relation("CheckedOutBy", fields: [checkedOutById], references: [id])
+
+  rejectionReason String?
+  notes           String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  notifications   NotificationLog[]
+
+  @@index([status])
+  @@index([expectedAt])
+  @@index([visitorPhone])
+  @@index([hostId])
+}
+
+model Blacklist {
+  id             String   @id @default(cuid())
+  name           String
+  idDocumentType IdDocumentType?
+  idDocumentNumber String?
+  phone          String?
+  reason         String
+  isActive       Boolean  @default(true)
+  addedById      String
+  addedBy        User     @relation("AddedBy", fields: [addedById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([name])
+  @@index([idDocumentNumber])
+  @@index([phone])
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  visitId   String
+  visit     Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  channel   String
+  recipient String
+  message   String
+  status    String   @default("sent")
+  createdAt DateTime @default(now())
+
+  @@index([visitId])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  action     AuditAction
+  entityType String
+  entityId   String
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id])
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model OtpSession {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
